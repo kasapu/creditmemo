@@ -1,0 +1,12 @@
+# Real-Azure dependencies. Install on top of requirements.txt when you have keys.
+-r requirements.txt
+
+langchain-openai>=0.2.0          # AzureChatOpenAI + embeddings
+azure-ai-documentintelligence>=1.0.0
+azure-search-documents>=11.5.0
+azure-identity>=1.16.0
+azure-core>=1.30.0
+azure-storage-blob>=12.19.0      # optional blob storage backend
+pyodbc>=5.1.0                    # Azure SQL (also needs the system ODBC driver)
+playwright>=1.43.0               # HTML->PDF rendering for SEC inline XBRL
+# After installing playwright, run:  python -m playwright install chromium

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Credit Memo GenAI</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --txt:#e6edf3; --muted:#8b949e; --accent:#2f81f7; --green:#2ea043; --amber:#d29922; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:16px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
+  header h1 { font-size:18px; margin:0; }
+  .badge { font-size:12px; padding:3px 8px; border-radius:12px; background:var(--panel); border:1px solid var(--border); color:var(--muted); }
+  main { display:flex; gap:20px; padding:20px 24px; }
+  .sidebar { width:300px; flex-shrink:0; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--txt); font-size:14px; }
+  button { width:100%; margin-top:14px; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.approve { background:var(--green); }
+  .content { flex:1; min-width:0; }
+  .progress-wrap { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; border:1px solid var(--border); }
+  .progress-bar { height:100%; background:var(--accent); width:0%; transition:width .4s; }
+  .status { font-size:13px; color:var(--muted); margin-top:8px; }
+  .tabs { display:flex; gap:6px; border-bottom:1px solid var(--border); margin-bottom:16px; flex-wrap:wrap; }
+  .tab { padding:8px 14px; cursor:pointer; font-size:14px; color:var(--muted); border-bottom:2px solid transparent; }
+  .tab.active { color:var(--txt); border-bottom-color:var(--accent); }
+  .prose { line-height:1.7; font-size:14px; white-space:pre-wrap; }
+  .meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:16px; }
+  .meta-card { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px; }
+  .meta-card .k { font-size:11px; color:var(--muted); text-transform:uppercase; }
+  .meta-card .v { font-size:18px; font-weight:600; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:600; }
+  .approve-box { border-color:var(--amber); }
+  .hidden { display:none; }
+  .err { color:#f85149; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📄 Credit Memo GenAI</h1>
+  <span class="badge" id="modeBadge">checking…</span>
+</header>
+<main>
+  <div class="sidebar">
+    <div class="panel">
+      <label>Ticker</label>
+      <input id="ticker" placeholder="AAPL" value="AAPL" />
+      <label>Fiscal Year (optional)</label>
+      <input id="fy" placeholder="auto" />
+      <label>Fiscal Period (optional)</label>
+      <select id="fp">
+        <option value="">auto</option>
+        <option>FY</option><option>Q1</option><option>Q2</option><option>Q3</option><option>Q4</option>
+      </select>
+      <button id="runBtn">Generate Credit Memo</button>
+    </div>
+    <div class="panel">
+      <label>Cached companies</label>
+      <div id="cached" style="font-size:13px;color:var(--muted)">none yet</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="panel" id="progressPanel">
+      <div class="progress-wrap"><div class="progress-bar" id="bar"></div></div>
+      <div class="status" id="status">Idle. Enter a ticker and generate.</div>
+    </div>
+
+    <div class="panel approve-box hidden" id="approvePanel">
+      <strong>⏸ Human-in-the-Loop approval</strong>
+      <div class="status">Review the analysis below, then approve to compose the final memo.</div>
+      <button class="approve" id="approveBtn">Approve &amp; Compose Memo</button>
+    </div>
+
+    <div class="panel hidden" id="resultsPanel">
+      <div class="meta-grid" id="metaGrid"></div>
+      <div class="tabs" id="tabs"></div>
+      <div id="tabContent" class="prose"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentTaskId = null, currentResult = null, activeTab = "memo";
+
+const TABS = [
+  ["memo", "Credit Memo", "draftMemo"],
+  ["financial", "Financial Remarks", "financialRemarks"],
+  ["risk", "Risk Analysis", "riskAnalysis"],
+  ["qualitative", "Qualitative Outlook", "qualitativeOutlook"],
+  ["kpis", "KPIs", null],
+];
+
+function renderProse(text) {
+  if (!text) return "<em>No content.</em>";
+  return text.split("\n").map(line => {
+    line = line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    if (line.startsWith("<t>")) return "• " + line.slice(3);
+    return line;
+  }).join("\n");
+}
+
+function renderKpis(kpi) {
+  if (!kpi) return "<em>No KPI data.</em>";
+  let html = `<p><strong>${kpi.ticker}</strong> — model ${kpi.model} ${kpi.model_version} (source: ${kpi.source})</p>`;
+  html += "<h4>Base Metrics</h4><table><tr><th>Metric</th><th>Value</th></tr>";
+  (kpi.base_metrics||[]).forEach(m => html += `<tr><td>${m.name}</td><td>${m.display ?? m.value}</td></tr>`);
+  html += "</table><h4 style='margin-top:16px'>Computed KPIs</h4><table><tr><th>KPI</th><th>Value</th></tr>";
+  (kpi.computed_kpis||[]).forEach(k => html += `<tr><td>${k.label}</td><td>${k.display ?? ("N/A — " + (k.note||""))}</td></tr>`);
+  html += "</table>";
+  return html;
+}
+
+function renderMeta(meta) {
+  const cards = [
+    ["Ticker", meta.ticker],
+    ["Company", meta.companyName],
+    ["Period", `FY${meta.fiscalYear||"?"} ${meta.fiscalPeriod||""}`],
+    ["Indicative Rating", meta.bestCreditRating || "—"],
+    ["Debt / Equity", meta.debtToEquityRatio != null ? meta.debtToEquityRatio.toFixed(2)+"x" : "—"],
+  ];
+  $("metaGrid").innerHTML = cards.map(([k,v]) =>
+    `<div class="meta-card"><div class="k">${k}</div><div class="v">${v ?? "—"}</div></div>`).join("");
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = TABS.map(([id,label]) =>
+    `<div class="tab ${id===activeTab?'active':''}" data-tab="${id}">${label}</div>`).join("");
+  document.querySelectorAll(".tab").forEach(t =>
+    t.onclick = () => { activeTab = t.dataset.tab; renderTabs(); renderActiveTab(); });
+}
+
+function renderActiveTab() {
+  if (!currentResult) return;
+  const tab = TABS.find(t => t[0] === activeTab);
+  if (activeTab === "kpis") {
+    $("tabContent").innerHTML = renderKpis(currentResult.kpi_data);
+  } else {
+    $("tabContent").innerHTML = renderProse(currentResult[tab[2]]);
+  }
+}
+
+function showResult(result) {
+  currentResult = result;
+  renderMeta(result.meta || {});
+  renderTabs();
+  renderActiveTab();
+  $("resultsPanel").classList.remove("hidden");
+}
+
+async function loadCached() {
+  try {
+    const r = await fetch("/analysis/cached-companies");
+    const d = await r.json();
+    $("cached").textContent = d.companies.length ? d.companies.join(", ") : "none yet";
+  } catch {}
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch("/health");
+    const d = await r.json();
+    $("modeBadge").textContent = d.mock_mode ? "OFFLINE / MOCK MODE" : "AZURE LIVE";
+  } catch { $("modeBadge").textContent = "offline"; }
+}
+
+$("runBtn").onclick = async () => {
+  const ticker = $("ticker").value.trim().toUpperCase();
+  if (!ticker) return;
+  $("runBtn").disabled = true;
+  $("resultsPanel").classList.add("hidden");
+  $("approvePanel").classList.add("hidden");
+  $("bar").style.width = "0%";
+  $("status").textContent = "Starting…";
+
+  const params = new URLSearchParams();
+  if ($("fy").value.trim()) params.set("fiscal_year", $("fy").value.trim());
+  if ($("fp").value) params.set("fiscal_period", $("fp").value);
+  const r = await fetch(`/analysis/${ticker}/report/task?${params}`, {method:"POST"});
+  const d = await r.json();
+  currentTaskId = d.task_id;
+  openStream(currentTaskId);
+};
+
+$("approveBtn").onclick = async () => {
+  $("approveBtn").disabled = true;
+  await fetch(`/analysis/report/task/${currentTaskId}/approve`, {method:"POST"});
+  $("approvePanel").classList.add("hidden");
+};
+
+function openStream(taskId) {
+  const es = new EventSource(`/analysis/report/task/${taskId}/stream`);
+  es.addEventListener("update", (e) => {
+    const d = JSON.parse(e.data);
+    $("bar").style.width = d.task_complete_percentage + "%";
+    $("status").textContent = d.task_status_log + " (" + d.task_complete_percentage + "%)";
+    if (d.awaiting_approval) {
+      $("approvePanel").classList.remove("hidden");
+      $("approveBtn").disabled = false;
+      if (d.result) showResult(d.result);
+    }
+  });
+  es.addEventListener("complete", (e) => {
+    const d = JSON.parse(e.data);
+    $("bar").style.width = "100%";
+    $("status").textContent = "Complete (100%)";
+    $("approvePanel").classList.add("hidden");
+    if (d.result) showResult(d.result);
+    $("runBtn").disabled = false;
+    loadCached();
+    es.close();
+  });
+  es.addEventListener("error", (e) => {
+    try { $("status").innerHTML = '<span class="err">Error: ' + JSON.parse(e.data).message + '</span>'; } catch {}
+    $("runBtn").disabled = false;
+    es.close();
+  });
+}
+
+checkHealth();
+loadCached();
+</script>
+</body>
+</html>
