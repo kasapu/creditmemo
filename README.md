@@ -12,10 +12,29 @@ cloud keys required) and lights up real Azure services as you add credentials.
 
 ---
 
+## Requirements
+
+- **Python 3.11+** (3.11, 3.12 or 3.13). Ubuntu 20.04/22.04 ship an older
+  Python (3.8/3.10) — install a newer one first:
+
+  ```bash
+  sudo add-apt-repository ppa:deadsnakes/ppa -y
+  sudo apt update && sudo apt install -y python3.11 python3.11-venv
+  ```
+
+  Then point the launcher at it: `PYTHON=python3.11 ./run.sh`.
+  (`run.sh` also auto-detects `python3.11/3.12/3.13` if present.)
+
 ## Quick start (offline / mock mode)
 
 ```bash
-python3 -m venv .venv
+./run.sh                        # creates venv, installs deps, starts server
+```
+
+…or do it manually:
+
+```bash
+python3.11 -m venv .venv        # must be Python 3.11+
 source .venv/bin/activate
 pip install -r requirements.txt
 
