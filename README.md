@@ -14,16 +14,37 @@ cloud keys required) and lights up real Azure services as you add credentials.
 
 ## Requirements
 
-- **Python 3.11+** (3.11, 3.12 or 3.13). Ubuntu 20.04/22.04 ship an older
-  Python (3.8/3.10) — install a newer one first:
+- **Python 3.11+** (3.11, 3.12 or 3.13).
+
+  **Can't install Python 3.11 (old distro, no sudo, or ARM64/Snapdragon)?**
+  Use [`uv`](https://github.com/astral-sh/uv) — it downloads a self-contained
+  Python 3.11 for your architecture, no admin rights needed:
+
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  source $HOME/.local/bin/env        # or reopen the terminal
+  ./run.sh                           # auto-uses uv to fetch Python 3.11
+  ```
+
+  Or do it manually:
+
+  ```bash
+  uv venv --python 3.11 .venv
+  source .venv/bin/activate
+  uv pip install -r requirements.txt
+  python run.py
+  ```
+
+  **On Ubuntu with sudo**, the deadsnakes PPA also works:
 
   ```bash
   sudo add-apt-repository ppa:deadsnakes/ppa -y
   sudo apt update && sudo apt install -y python3.11 python3.11-venv
+  PYTHON=python3.11 ./run.sh
   ```
 
-  Then point the launcher at it: `PYTHON=python3.11 ./run.sh`.
-  (`run.sh` also auto-detects `python3.11/3.12/3.13` if present.)
+  (`run.sh` auto-detects `python3.11/3.12/3.13`, falls back to `uv`, and rebuilds
+  a venv that was created with an unsupported Python.)
 
 ## Quick start (offline / mock mode)
 
