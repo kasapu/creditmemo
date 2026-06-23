@@ -1,0 +1,166 @@
+# Declarative KPI semantic model.
+#
+# `metrics`  bind logical names to one or more XBRL concepts (first match wins).
+# `kpis`     compute derived values from those metrics using sandboxed formulas.
+#
+# Formulas are evaluated with `eval()` in a namespace exposing only the metric
+# values and `abs`.  A missing `requires` input or a ZeroDivisionError yields a
+# Note instead of crashing.
+
+model: sec_financial_kpi_model
+version: "0.1.1"
+
+metrics:
+  - name: revenue
+    concepts:
+      - RevenueFromContractWithCustomerExcludingAssessedTax
+      - Revenues
+      - SalesRevenueNet
+      - RevenueFromContractWithCustomerIncludingAssessedTax
+    statement: income_statement
+
+  - name: cost_of_revenue
+    concepts: [CostOfRevenue, CostOfGoodsAndServicesSold, CostOfGoodsSold]
+    statement: income_statement
+    default: 0
+
+  - name: gross_profit
+    concepts: [GrossProfit]
+    statement: income_statement
+
+  - name: operating_income
+    concepts: [OperatingIncomeLoss]
+    statement: income_statement
+
+  - name: net_income
+    concepts: [NetIncomeLoss, ProfitLoss]
+    statement: income_statement
+
+  - name: interest_expense
+    concepts: [InterestExpense, InterestExpenseDebt]
+    statement: income_statement
+    default: 0
+
+  - name: total_assets
+    concepts: [Assets]
+    statement: balance_sheet
+
+  - name: current_assets
+    concepts: [AssetsCurrent]
+    statement: balance_sheet
+
+  - name: total_liabilities
+    concepts: [Liabilities]
+    statement: balance_sheet
+
+  - name: current_liabilities
+    concepts: [LiabilitiesCurrent]
+    statement: balance_sheet
+
+  - name: stockholders_equity
+    concepts:
+      - StockholdersEquity
+      - StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+    statement: balance_sheet
+
+  - name: cash_and_equivalents
+    concepts:
+      - CashAndCashEquivalentsAtCarryingValue
+      - CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents
+    statement: balance_sheet
+
+  - name: marketable_securities
+    concepts:
+      - MarketableSecuritiesCurrent
+      - ShortTermInvestments
+      - AvailableForSaleSecuritiesDebtSecuritiesCurrent
+    statement: balance_sheet
+    default: 0
+
+  - name: accounts_receivable
+    concepts: [AccountsReceivableNetCurrent, ReceivablesNetCurrent]
+    statement: balance_sheet
+    default: 0
+
+  - name: inventory
+    concepts: [InventoryNet]
+    statement: balance_sheet
+    default: 0
+
+  - name: long_term_debt
+    concepts: [LongTermDebtNoncurrent, LongTermDebt, LongTermDebtAndCapitalLeaseObligations]
+    statement: balance_sheet
+    default: 0
+
+  - name: short_term_debt
+    concepts: [DebtCurrent, ShortTermBorrowings, LongTermDebtCurrent]
+    statement: balance_sheet
+    default: 0
+
+  - name: operating_cash_flow
+    concepts:
+      - NetCashProvidedByUsedInOperatingActivities
+      - NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
+    statement: cash_flow
+
+  - name: capex
+    concepts: [PaymentsToAcquirePropertyPlantAndEquipment, PaymentsToAcquireProductiveAssets]
+    statement: cash_flow
+    default: 0
+
+kpis:
+  - name: gross_margin_pct
+    label: Gross Margin %
+    formula: "gross_profit / revenue * 100"
+    unit: pct
+
+  - name: operating_margin_pct
+    label: Operating Margin %
+    formula: "operating_income / revenue * 100"
+    unit: pct
+
+  - name: net_margin_pct
+    label: Net Margin %
+    formula: "net_income / revenue * 100"
+    unit: pct
+
+  - name: current_ratio
+    label: Current Ratio
+    formula: "current_assets / current_liabilities"
+    unit: ratio
+
+  - name: quick_ratio
+    label: Quick Ratio
+    formula: "(cash_and_equivalents + marketable_securities + accounts_receivable) / current_liabilities"
+    unit: ratio
+
+  - name: total_debt
+    label: Total Debt
+    formula: "long_term_debt + short_term_debt"
+    unit: currency
+
+  - name: debt_to_equity
+    label: Debt / Equity
+    formula: "(long_term_debt + short_term_debt) / stockholders_equity"
+    unit: ratio
+
+  - name: interest_coverage
+    label: Interest Coverage
+    formula: "operating_income / interest_expense"
+    unit: ratio
+    requires: [interest_expense]
+
+  - name: free_cash_flow
+    label: Free Cash Flow
+    formula: "operating_cash_flow - abs(capex)"
+    unit: currency
+
+  - name: return_on_equity_pct
+    label: Return on Equity %
+    formula: "net_income / stockholders_equity * 100"
+    unit: pct
+
+  - name: return_on_assets_pct
+    label: Return on Assets %
+    formula: "net_income / total_assets * 100"
+    unit: pct
